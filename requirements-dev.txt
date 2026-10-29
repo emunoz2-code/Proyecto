@@ -1,0 +1,4 @@
+# Solo computador. El firmware no requiere paquetes externos.
+paho-mqtt>=2.1,<3
+mpremote>=1.24,<2
+esptool>=5,<6

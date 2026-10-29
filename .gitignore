@@ -1,0 +1,15 @@
+.venv/
+.idea/
+__pycache__/
+*.py[cod]
+firmware/config_local.py
+config_local.py
+broker/passwords
+broker/mosquitto.local.conf
+broker/acl.local
+*.log
+.env
+dist/
+*.zip
+*.bin
+*.vcd
