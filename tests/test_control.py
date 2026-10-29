@@ -2,6 +2,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "firmware"))
 import config
@@ -162,6 +163,28 @@ class ControlTests(unittest.TestCase):
 
     def test_snapshot_no_fake_battery(self):
         self.assertIsNone(self.c.snapshot(0)["battery_v"])
+
+    def test_tick_wraparound(self):
+        period = 1 << 30
+        def diff(a, b):
+            return (a - b + period // 2) % period - period // 2
+        with patch("clockutil.time.ticks_diff", diff, create=True):
+            start = period - 100
+            self.c.sensor(100, start)
+            self.send("arm", now=start)
+            self.send("move", 1, start, direction="forward", speed=30)
+            self.c.sensor(100, 499)
+            self.c.tick(499)
+            self.assertTrue(self.c.armed)
+            self.c.tick(500)
+            self.assertEqual(self.c.reason, "move_timeout")
+
+    def test_invalid_messages_do_not_extend_timeout(self):
+        self.moving()
+        self.c.sensor(100, 500)
+        self.c.command("{broken", False, 500)
+        self.c.tick(600)
+        self.assertFalse(self.c.armed)
 
 
 if __name__ == "__main__":

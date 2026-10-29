@@ -28,6 +28,18 @@ class SocketDouble:
     def close(self):
         self.closed = True
 
+    def settimeout(self, timeout):
+        self.timeout = timeout
+
+    def setblocking(self, value):
+        self.blocking = value
+
+    def connect(self, address):
+        self.address = address
+
+    def sendall(self, data):
+        self.sent += data
+
 
 class MQTTTests(unittest.TestCase):
     def setUp(self):
@@ -105,6 +117,32 @@ class MQTTTests(unittest.TestCase):
     def test_queue_is_bounded(self):
         with self.assertRaises(OSError):
             self.client.enqueue(b"x" * 4097)
+
+    def test_connect_will_credentials_and_subscription(self):
+        sock = SocketDouble([b"\x20", b"\x02\x00\x00"])
+        with patch("mqtt_wire.socket.getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 1883))]):
+            with patch("mqtt_wire.socket.socket", return_value=sock):
+                self.client.connect("test-device", "base/car")
+        header, body, _ = take_packet(sock.sent)
+        self.assertEqual(header, 0x10)
+        self.assertEqual(body[:7], b"\x00\x04MQTT\x04")
+        self.assertEqual(body[7], 0xE6)  # clean session, Will retain, usuario y contraseña.
+        self.assertIn(field("base/car/availability"), body)
+        self.assertIn(b'{"v":1,"online":false}', body)
+        self.assertFalse(sock.blocking)
+        self.assertFalse(self.client.ready)
+        self.assertEqual(take_packet(self.client.tx[0][0])[1], b"\x00\x01" + field("base/car/cmd") + b"\x00")
+        self.client.handle(0x90, b"\x00\x01\x00")
+        self.assertTrue(self.client.ready)
+
+    def test_connect_rejection_closes_socket(self):
+        sock = SocketDouble([b"\x20\x02\x00\x05"])
+        with patch("mqtt_wire.socket.getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 1883))]):
+            with patch("mqtt_wire.socket.socket", return_value=sock):
+                with self.assertRaises(OSError):
+                    self.client.connect("test", "base")
+        self.assertTrue(sock.closed)
+        self.assertIsNone(self.client.sock)
 
 
 if __name__ == "__main__":
