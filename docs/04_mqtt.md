@@ -50,6 +50,8 @@ Se aceptan `stop` y `estop` sin conocer sesión/secuencia para favorecer la dete
 
 Requiere el contacto NC físico cerrado y solo deja el carro desarmado. Después hay que esperar la nueva sesión, enviar `arm` y una nueva orden `move`. Se rechazan propiedades desconocidas, versiones distintas, secuencias duplicadas y payloads mayores de 384 bytes.
 
+El enclavamiento remoto se mantiene en memoria durante la ejecución. Después de reiniciar, el vehículo arranca desarmado con otra sesión; ese enclavamiento remoto no se conserva en memoria no volátil. El pulsador físico permanece abierto hasta que se libere mecánicamente, y vuelve a detectarse al arrancar.
+
 ## 4.3 Respuestas y telemetría
 
 ```json

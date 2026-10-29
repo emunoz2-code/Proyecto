@@ -2,6 +2,8 @@
 
 Proyecto de Programación II: carro de dos motores que recibe órdenes por MQTT y publica distancia, movimiento y estado de seguridad. El Parcial 2 se concentra en el **firmware**; el contrato de comunicación permite incorporar una aplicación de escritorio en el Parcial 3.
 
+**Guía completa:** [versión editable Markdown](GUIA_PARCIAL_2.md) · [versión HTML para lectura e impresión](GUIA_PARCIAL_2.html).
+
 **Placa de referencia:** ESP32 DevKit clásica / ESP32-WROOM-32, 4 MB de flash. El pinout no es intercambiable con ESP32-C3/S3. **Estado inicial:** motores deshabilitados; es necesario configurar la red y armar explícitamente el vehículo.
 
 ## Lectura y ejecución por etapas
