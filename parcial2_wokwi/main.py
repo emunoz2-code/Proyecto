@@ -1,72 +1,112 @@
-"""Parcial 2: vehículo simulado en Wokwi con ESP32 y MicroPython."""
-from machine import Pin, ADC
-from time import sleep_ms, ticks_ms, ticks_diff
+"""Parcial 2: ESP32 en Wokwi preparada para control desde una app por MQTT."""
+import json
+import os
+import binascii
+from time import sleep_ms
+from machine import Pin
+import config as cfg
+from clockutil import now_ms, elapsed
 from motores import Motores
 from sensor import SensorDistancia
+from control import Controller
+from mqtt_wire import MQTTClient
+from wifi import WiFi
 
-DISTANCIA_MINIMA = 20  # centímetros
 
-
-def decidir_estado(estado, orden, distancia):
-    """Una nueva pulsación cambia la orden; un obstáculo siempre detiene."""
-    if orden is not None:
-        estado = orden
-    if distancia is None or distancia <= DISTANCIA_MINIMA:
-        estado = "detener"
-    return estado
+def token():
+    """Identificador nuevo para descartar ordenes de una sesion anterior."""
+    return binascii.hexlify(os.urandom(8)).decode()
 
 
 def main():
     motores = Motores()
-    sensor = SensorDistancia(trig=23, echo=34)
-    botones = {
-        "avanzar": Pin(32, Pin.IN, Pin.PULL_UP),
-        "retroceder": Pin(33, Pin.IN, Pin.PULL_UP),
-        "izquierda": Pin(21, Pin.IN, Pin.PULL_UP),
-        "derecha": Pin(22, Pin.IN, Pin.PULL_UP),
-        "detener": Pin(13, Pin.IN, Pin.PULL_UP),
-    }
-    potenciometro = ADC(Pin(35))
-    potenciometro.atten(ADC.ATTN_11DB)
-    potenciometro.width(ADC.WIDTH_12BIT)
-    estado = "detener"
-    pulsado_anterior = None
-    distancia = None
-    ultima_lectura = None
-    ultimo_reporte = ticks_ms()
-    print("PARCIAL 2 - Vehiculo en Wokwi")
-    print("Pulse un boton para elegir movimiento; el rojo detiene.")
-    print("Potenciometro: potencia de 0 a 100 %. Obstaculo: 20 cm.")
-
+    mqtt = None
     try:
-        while True:
-            activos = [nombre for nombre, pin in botones.items() if pin.value() == 0]
-            if "detener" in activos or len(activos) > 1:
-                pulsado = "detener"
-            else:
-                pulsado = activos[0] if activos else None
-            # Solo una pulsacion nueva permite cambiar de estado.
-            orden = pulsado if pulsado != pulsado_anterior else None
-            pulsado_anterior = pulsado
-            ahora = ticks_ms()
-            if ultima_lectura is None or ticks_diff(ahora, ultima_lectura) >= 100:
-                distancia = sensor.leer_cm()
-                ultima_lectura = ticks_ms()
-            estado = decidir_estado(estado, orden, distancia)
-            velocidad = potenciometro.read() * 100 // 4095
-            if velocidad == 0:
-                estado = "detener"
-            motores.aplicar(estado, velocidad)
+        if not cfg.TOPIC_BASE or any(c in cfg.TOPIC_BASE for c in "+#\x00"):
+            raise ValueError("TOPIC_BASE invalido")
+        if not 1 <= cfg.MAX_SPEED <= 100:
+            raise ValueError("MAX_SPEED debe estar entre 1 y 100")
+        sensor = SensorDistancia(trig=23, echo=34)
+        boton_rojo = Pin(cfg.ESTOP_PIN, Pin.IN, Pin.PULL_UP)
+        control = Controller(motores, cfg, token)
+        wifi = WiFi(cfg)
+        base = cfg.TOPIC_BASE.rstrip("/")
+        client_id = "esp32-" + token()
 
-            ahora = ticks_ms()
-            if ticks_diff(ahora, ultimo_reporte) >= 500:
-                lectura = "sin lectura" if distancia is None else "%.1f cm" % distancia
-                potencia = velocidad if estado != "detener" else 0
-                print("Distancia: %s | Estado: %s | PWM: %d %%" % (lectura, estado, potencia))
-                ultimo_reporte = ahora
-            sleep_ms(20)
+        def servicio_detenido():
+            # Las conexiones pueden esperar; se realizan sin movimiento.
+            motores.detener()
+            control.physical(boton_rojo.value() == 0)
+
+        def recibir(topic, payload, retained):
+            control.physical(boton_rojo.value() == 0)
+            if topic == base + "/cmd":
+                respuesta = control.command(payload, retained, now_ms())
+                mqtt.publish(base + "/ack", json.dumps(respuesta))
+                mqtt.publish(base + "/telemetry", json.dumps(control.snapshot(now_ms())))
+
+        mqtt = MQTTClient(cfg, recibir)
+        espera = 1000
+        print("PARCIAL 2 - Control remoto MQTT")
+        print("Broker:", cfg.MQTT_HOST, "| Topics:", base + "/#")
+        print("Sin orden remota valida, el vehiculo permanece detenido.")
+        while True:
+            control.link(False)
+            try:
+                servicio_detenido()
+                wifi.connect(servicio_detenido)
+                mqtt.connect(client_id, base)
+                while not mqtt.ready:
+                    servicio_detenido()
+                    mqtt.poll()
+                    sleep_ms(cfg.LOOP_MS)
+                control.link(True)
+                mqtt.publish(base + "/availability", '{"v":1,"online":true}', True)
+                print("Conectado. Esperando arm y move desde el cliente MQTT.")
+                ultimo_sensor = ultima_telemetria = ultimo_latido = None
+                numero_latido = 0
+                conectado_desde = now_ms()
+                while wifi.connected():
+                    ahora = now_ms()
+                    control.physical(boton_rojo.value() == 0)
+                    # Caducar antes de renovar sensor o procesar mensajes tardios.
+                    control.tick(ahora)
+                    if ultimo_sensor is None or elapsed(ahora, ultimo_sensor) >= cfg.SENSOR_PERIOD_MS:
+                        distancia = sensor.leer_cm()
+                        ultimo_sensor = now_ms()
+                        control.sensor(distancia, ultimo_sensor)
+                    control.physical(boton_rojo.value() == 0)
+                    control.tick(now_ms())
+                    mqtt.poll()  # Lectura y escritura no bloqueantes, acotadas.
+                    ahora = now_ms()
+                    control.tick(ahora)
+                    if ultima_telemetria is None or elapsed(ahora, ultima_telemetria) >= cfg.TELEMETRY_MS:
+                        estado = control.snapshot(ahora)
+                        mqtt.publish(base + "/telemetry", json.dumps(estado))
+                        print(json.dumps(estado))
+                        ultima_telemetria = ahora
+                    if ultimo_latido is None or elapsed(ahora, ultimo_latido) >= cfg.HEARTBEAT_MS:
+                        mqtt.publish(base + "/heartbeat", json.dumps({
+                            "v": 1, "seq": numero_latido, "uptime_ms": ahora}))
+                        numero_latido += 1
+                        ultimo_latido = ahora
+                    if elapsed(ahora, conectado_desde) > 10000:
+                        espera = 1000
+                    sleep_ms(cfg.LOOP_MS)
+                raise OSError("Wi-Fi desconectado")
+            except (OSError, ValueError) as exc:
+                control.link(False)
+                mqtt.close()
+                print("Sin conexion:", exc, "| Reintento en ms:", espera)
+                inicio = now_ms()
+                while elapsed(now_ms(), inicio) < espera:
+                    servicio_detenido()
+                    sleep_ms(50)
+                espera = min(espera * 2, 10000)
     finally:
         motores.detener()
+        if mqtt:
+            mqtt.close()
 
 
 if __name__ == "__main__":

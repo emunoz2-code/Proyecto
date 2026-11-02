@@ -1,79 +1,143 @@
-# Parcial 2 — Vehículo simulado en Wokwi
+# Parcial 2 — Vehículo ESP32 preparado para control desde una aplicación
 
-Firmware en **MicroPython sobre ESP32** que lee distancia y controla las señales de dos motores. Se ejecuta completamente en Wokwi.
+Firmware en MicroPython y montaje Wokwi enfocados a recibir órdenes de la futura interfaz gráfica mediante MQTT. El Parcial 2 incluye la ESP32, lectura del sensor, señales de motores, decisiones de parada y comunicación. La aplicación del Parcial 3 no está desarrollada; su contrato de mensajes queda definido en `CONTRATO_MQTT.md`.
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    APP["Futura aplicación gráfica"] <-->|"Órdenes y estado"| B["Broker MQTT"]
+    B <-->|"Wi-Fi virtual"| E["ESP32 con MicroPython"]
+    S["HC-SR04"] -->|"Distancia"| E
+    P["Botón rojo local"] -->|"Emergencia"| E
+    E -->|"Dirección y PWM"| L["6 LED: señales de dos motores"]
+```
+
+La aplicación decidirá qué movimiento solicita el usuario; la ESP32 decide si puede ejecutarlo. El sensor y el botón rojo pueden detener las salidas independientemente de la aplicación.
+
+## Qué cambia en el montaje
+
+Se retiran los cuatro botones de dirección y el potenciómetro. La dirección y la potencia llegan por MQTT. Se conserva el botón rojo, ahora como parada de emergencia que queda bloqueada hasta un restablecimiento explícito.
+
+| Componente | Cantidad | Función |
+|---|---:|---|
+| ESP32 DevKit V1 | 1 | Ejecutar MicroPython y conectarse al broker |
+| HC-SR04 | 1 | Medir obstáculos |
+| Pushbutton rojo | 1 | Emergencia local |
+| LED azules | 4 | Señales IN1, IN2, IN3 e IN4 |
+| LED verdes | 2 | Señales PWM ENA y ENB |
+| Resistencias de 220 ohmios | 6 | Una por LED |
+
+Son **15 componentes**, o 14 por agregar si la placa ya está presente. Hay además dos etiquetas de texto opcionales. No hace falta agregar un router, una batería o una pantalla.
+
+Los LED representan las señales que recibiría un controlador de motores: no simulan un L298N ni el movimiento mecánico del carro. PWM es potencia solicitada, no velocidad medida.
+
+## Conexiones exactas
+
+| Terminal | Conexión en ESP32 |
+|---|---|
+| HC-SR04 VCC | VIN |
+| HC-SR04 GND | GND |
+| HC-SR04 TRIG | GPIO23 |
+| HC-SR04 ECHO | GPIO34 |
+| Botón rojo 1.l | GPIO13 |
+| Botón rojo 2.l | GND |
+| ENA, mediante resistencia de 220 ohmios | GPIO25 |
+| IN1, mediante resistencia de 220 ohmios | GPIO26 |
+| IN2, mediante resistencia de 220 ohmios | GPIO27 |
+| ENB, mediante resistencia de 220 ohmios | GPIO14 |
+| IN3, mediante resistencia de 220 ohmios | GPIO18 |
+| IN4, mediante resistencia de 220 ohmios | GPIO19 |
+
+Cada LED se conecta `GPIO -> resistencia -> A`; su terminal C va a GND. Todos comparten tierra. Los terminales 1.r y 2.r del botón quedan libres. El código usa `PULL_UP`: pulsado equivale a cero. El diagrama desactiva el rebote con `bounce: "0"`.
+
+**Solo Wokwi:** ECHO directo es una simplificación de esta simulación digital; no copiar esa conexión directamente a una ESP32 física. El pulsador representa una parada por software, no un corte eléctrico de potencia.
 
 ## Archivos
 
-| Archivo | Función |
+| Archivo | Responsabilidad |
 |---|---|
-| `main.py` | Lee los controles, decide el movimiento y muestra el estado |
-| `motores.py` | Genera dirección y PWM para los dos motores |
-| `sensor.py` | Lee la distancia del HC-SR04 |
-| `diagram.json` | Componentes y conexiones de Wokwi |
-| `README.md` | Descripción e instrucciones |
+| `main.py` | Integra sensor, botón, MQTT y publicación periódica |
+| `config.py` | Wi-Fi, broker, topics y tiempos |
+| `control.py` | Validación de órdenes, sesiones y reglas de parada |
+| `motores.py` | Dirección y PWM de las seis salidas |
+| `sensor.py` | Medición del HC-SR04 |
+| `wifi.py` | Conexión Wi-Fi con las salidas detenidas |
+| `mqtt_wire.py` | Cliente MQTT 3.1.1 incluido; no requiere instalar umqtt |
+| `clockutil.py` | Medición de intervalos, incluyendo desbordamiento del reloj |
+| `diagram.json` | Componentes y conexiones |
+| `CONTRATO_MQTT.md` | Topics, ejemplos JSON y comportamiento esperado de la futura app |
+| `README.md` | Montaje, ejecución y validación |
 
-## Componentes simulados
+## Ejecutar en Wokwi
 
-Una ESP32, un HC-SR04, cinco botones, un potenciómetro y seis LED con resistencias de 220 Ω. Los LED representan las **señales de control** de los motores; no simulan un carro desplazándose ni un L298N físico.
+1. Abrir un proyecto [ESP32 con MicroPython](https://wokwi.com/projects/new/micropython-esp32).
+2. Cargar los ocho archivos `.py` y `diagram.json` en la raíz del proyecto, reemplazando los archivos de la versión anterior. Los dos documentos Markdown son material de consulta.
+3. Revisar `config.py`: Wi-Fi `Wokwi-GUEST`, contraseña vacía; broker `test.mosquitto.org`, puerto 1883, sin credenciales.
+4. Mantener el mismo `TOPIC_BASE` en la ESP32 y el cliente MQTT. Cambiar su sufijo si se ejecutan copias independientes del proyecto.
+5. Iniciar la simulación y dejar el sensor en 100 cm. El monitor serie debe indicar la conexión y mostrar telemetría JSON. Los LED permanecen apagados hasta recibir órdenes válidas.
+6. Con un cliente MQTT de pruebas, suscribirse a `parcial2/vehiculo_7d49c2a1/#`, QoS 0. Seguir `CONTRATO_MQTT.md` para enviar `arm`, esperar confirmación y enviar `move`. No retener los comandos.
+7. La futura aplicación usará exactamente los mismos mensajes. No hace falta modificar los pines al incorporarla.
 
-## Ejecutar
+Wokwi proporciona la red abierta Wokwi-GUEST. El gateway público permite conexiones salientes al broker de Internet; un broker del computador en localhost no es accesible como tal desde esa red virtual. Referencia: [Wi-Fi de Wokwi](https://docs.wokwi.com/guides/esp32-wifi).
 
-1. Abrir [Nuevo proyecto ESP32 con MicroPython](https://wokwi.com/projects/new/micropython-esp32).
-2. Reemplazar `main.py` y `diagram.json` por los archivos de esta carpeta.
-3. Añadir `motores.py` y `sensor.py` desde el menú del editor. Copiar sus contenidos; los cuatro archivos deben estar en la raíz del proyecto Wokwi.
-4. Pulsar **Start the simulation**.
-5. Pulsar un botón de dirección. La orden permanece activa hasta otra pulsación o una parada automática. El botón rojo detiene.
-6. Girar el potenciómetro para cambiar el PWM. Si llega a cero, se detiene y requiere una nueva pulsación para volver a mover.
-7. Hacer clic en el HC-SR04 y cambiar la distancia. A **20 cm o menos**, o si la lectura falla, el programa detiene todas las salidas.
-8. Observar distancia, estado y PWM en el monitor serie.
+El broker configurado es público, sin autenticación ni cifrado: usarlo solo para la demostración, sin datos privados. Puede reiniciarse o no estar disponible. Referencia: [servidor de pruebas Mosquitto](https://test.mosquitto.org/).
 
-Después de una parada por obstáculo, aumentar la distancia y volver a pulsar una dirección. Despejar el sensor no reinicia por sí solo. Presionar varios botones a la vez también detiene.
+## Funcionamiento del firmware
 
-## Conexiones de la simulación
+- Arranque y reconexión: salidas apagadas; siempre se exige habilitar el control con `arm`.
+- Movimiento: dirección remota y PWM entero de 1 a 100 %. La futura app repite `move` cada 250 ms mientras el usuario mantenga pulsado el control.
+- Ausencia de nuevas órdenes de movimiento durante 800 ms: parada, aunque sigan llegando heartbeats.
+- Control habilitado sin movimiento: `heartbeat` mantiene la habilitación; caduca después de 1500 ms sin órdenes válidas.
+- Sensor: lectura aproximadamente cada 100 ms; distancia de 20 cm o menos, fallo de lectura o dato de más de 350 ms impiden la marcha en cualquier dirección.
+- Botón rojo o `estop`: parada bloqueada; soltar el botón no reanuda. Se requiere `clear_estop`, luego una nueva habilitación y una nueva orden.
+- Pérdida detectada de Wi-Fi o MQTT: parada y reconexión con esperas de 1, 2, 4, 8 y hasta 10 segundos. Las esperas de conexión ocurren con salidas apagadas.
+- Las sesiones cambian al detener/deshabilitar; las órdenes de una sesión anterior se rechazan. La aplicación nunca debe reanudar por sí sola.
+- Telemetría: cada 500 ms y tras comandos. Heartbeat de la ESP32: cada 1000 ms. El broker anuncia desconexión mediante el último testamento MQTT.
 
-| Elemento | GPIO |
+Los tiempos se comprueban en el bucle de ejecución y no constituyen garantías de tiempo real de un sistema físico. El cliente MQTT usa lectura/escritura no bloqueantes durante la marcha, límites de tamaño y plazos para tramas incompletas. La búsqueda DNS y el establecimiento de conexión pueden esperar, pero se hacen con motores detenidos.
+
+## Relación con el enunciado del Parcial 2
+
+| Solicitud | Implementación |
 |---|---|
-| HC-SR04 TRIG / ECHO | 23 / 34 |
-| Avanzar / retroceder | 32 / 33 |
-| Izquierda / derecha / detener | 21 / 22 / 13 |
-| Potenciómetro SIG | 35 |
-| LED ENA / ENB (PWM) | 25 / 14 |
-| LED IN1 / IN2 / IN3 / IN4 | 26 / 27 / 18 / 19 |
+| MicroPython sobre ESP32 | Ocho módulos Python ejecutados desde `main.py` |
+| Sensores | HC-SR04 y procesamiento de distancia |
+| Entradas y salidas | Botón rojo, ECHO, TRIG y salidas digitales/PWM |
+| Control de actuadores | Señales de dos motores representadas con LED |
+| Procesamiento de información | Validación de órdenes y decisiones de parada |
+| Funcionalidades acordes a la propuesta | Recepción y envío MQTT preparados para control remoto |
+| Desarrollo progresivo | Evolución del control local hacia el control remoto; código modular |
 
-Los botones se conectan a GND y usan `PULL_UP`. Cada LED tiene resistencia de 220 Ω. El potenciómetro usa 3V3 y GND; el sensor, VIN y GND. El ECHO directo corresponde **exclusivamente a esta simulación digital**; no copiar ese cableado a hardware físico.
+La interfaz gráfica y su implementación pertenecen al Parcial 3. Aquí se deja lista únicamente la parte que necesita la ESP32 para comunicarse con ella.
 
-## Pruebas para mostrar al docente
+## Pruebas de demostración pendientes en Wokwi
 
-| Prueba | Resultado esperado |
+| Acción | Resultado esperado |
 |---|---|
-| Iniciar | Salidas detenidas |
-| Distancia 100 cm y avanzar | IN1 e IN3 activos; ENA/ENB con PWM |
-| Retroceder | IN2 e IN4 activos |
-| Izquierda | IN2 e IN3 activos |
-| Derecha | IN1 e IN4 activos |
-| Cambiar potenciómetro | Varía PWM indicado y brillo de ENA/ENB |
-| Detener | Todos los LED apagados |
-| Distancia de 10 cm durante movimiento | Parada automática |
-| Volver a 100 cm sin otra pulsación | Permanece detenido |
+| Arrancar sin cliente MQTT | Todas las salidas apagadas |
+| Recibir `move` sin `arm` previo | Rechazo y salidas apagadas |
+| Habilitar y avanzar con sensor a 100 cm | IN1 e IN3 encendidos; ENA y ENB con PWM |
+| Cambiar `speed` de 30 a 70 durante órdenes renovadas | Mayor brillo en ENA y ENB |
+| Soltar control y enviar `stop` | Todas las salidas apagadas |
+| Dejar de renovar `move` | Parada al vencer 800 ms |
+| Cambiar sensor a 10 cm | Parada y cambio de sesión |
+| Volver a 100 cm | Permanece detenido |
+| Pulsar y soltar botón rojo | Emergencia permanece bloqueada |
+| Restaurar conexión después de una pérdida | Permanece detenido; requiere nuevas órdenes |
 
-## Entrega del Parcial 2
+## Validación realizada
 
-Se incluyen firmware MicroPython, sensor, entradas digitales y analógica, salidas digitales y PWM, procesamiento de distancia, módulos y README. Completar la entrega con el repositorio GitHub y el enlace de la simulación guardada.
+Pruebas locales de lógica, adaptadores con periféricos dobles y transporte MQTT: **42 pruebas aprobadas**. Cubren las cuatro direcciones, PWM, sensor, mensajes inválidos y repetidos, plazos de parada, emergencias, reconexión lógica, fragmentación TCP y reloj con desbordamiento. También se comprobaron la sintaxis de los ocho módulos y la estructura de las conexiones del diagrama. No equivalen a ejecutar MicroPython dentro de Wokwi.
 
-**Enlace Wokwi:** pendiente de guardar en una cuenta.
+El 2 de noviembre de 2026 se intentó además una prueba contra `test.mosquitto.org:1883` desde el computador. La conexión TCP agotó el plazo antes de intercambiar mensajes; esa prueba **no se completó** y no demuestra un fallo del firmware ni confirma que el broker sea accesible desde Wokwi. La comunicación con un broker real sigue pendiente de verificación.
 
-Guardar cambios reales de cada etapa en Git: sensor, motores, controles y pruebas. Para un repositorio nuevo que contenga solamente esta versión, copiar **estos cinco archivos** a otra carpeta y ejecutar allí:
+Desde la carpeta raíz de trabajo pueden repetirse con:
 
 ```powershell
-git init -b main
-git add .
-git commit -m "feat: agregar simulacion del vehiculo para el parcial 2"
-git remote add origin https://github.com/TU_USUARIO/vehiculo-parcial2.git
-git push -u origin main
+.\.venv\Scripts\python.exe -m unittest discover -s verificacion_wokwi -v
 ```
 
-Crear antes un repositorio vacío en GitHub y sustituir la URL. Continuar con commits de las pruebas y correcciones efectivamente realizadas. No hacen falta PyCharm ni componentes físicos para ejecutar la simulación.
+La carpeta `verificacion_wokwi` está separada del paquete de firmware; esas pruebas se ejecutan en el computador. La simulación completa en Wokwi sigue pendiente por el bloqueo de permisos del navegador de esta sesión. No se realizaron pruebas físicas ni se desarrolló una aplicación gráfica.
 
-**Validación:** sintaxis y lógica de movimiento/parada comprobadas en el computador con periféricos simulados por software. No se ejecutó el proyecto en Wokwi: la carga de archivos al sitio no fue autorizada en esta sesión. Las pruebas de la tabla son pasos por realizar, no resultados ya obtenidos.
-
-Referencia: [simulación ESP32 en Wokwi](https://docs.wokwi.com/guides/esp32).
+**Enlace Wokwi:** pendiente de guardar y comprobar.

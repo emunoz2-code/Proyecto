@@ -20,21 +20,12 @@
       }
     },
     {
-      "type": "wokwi-potentiometer",
-      "id": "velocidad",
-      "top": 310,
-      "left": 40,
-      "attrs": {
-        "value": "512"
-      }
-    },
-    {
       "type": "wokwi-text",
       "id": "titulo",
       "top": -230,
       "left": -300,
       "attrs": {
-        "text": "PARCIAL 2 - Vehiculo en Wokwi"
+        "text": "PARCIAL 2 - ESP32 control por MQTT"
       }
     },
     {
@@ -43,61 +34,17 @@
       "top": 440,
       "left": -300,
       "attrs": {
-        "text": "LED verdes: PWM | LED azules: direccion\nSensor: detener a 20 cm o menos"
-      }
-    },
-    {
-      "type": "wokwi-pushbutton",
-      "id": "avanzar",
-      "top": -20,
-      "left": -260,
-      "attrs": {
-        "color": "green",
-        "label": "AVANZAR",
-        "bounce": "0"
-      }
-    },
-    {
-      "type": "wokwi-pushbutton",
-      "id": "retroceder",
-      "top": 210,
-      "left": -260,
-      "attrs": {
-        "color": "blue",
-        "label": "RETROCEDER",
-        "bounce": "0"
-      }
-    },
-    {
-      "type": "wokwi-pushbutton",
-      "id": "izquierda",
-      "top": 95,
-      "left": -410,
-      "attrs": {
-        "color": "yellow",
-        "label": "IZQUIERDA",
-        "bounce": "0"
-      }
-    },
-    {
-      "type": "wokwi-pushbutton",
-      "id": "derecha",
-      "top": 95,
-      "left": -110,
-      "attrs": {
-        "color": "yellow",
-        "label": "DERECHA",
-        "bounce": "0"
+        "text": "Ordenes desde la app por MQTT\nRojo: emergencia | Sensor: parada a 20 cm\nLED verdes: PWM | LED azules: direccion"
       }
     },
     {
       "type": "wokwi-pushbutton",
       "id": "detener",
-      "top": 95,
-      "left": -260,
+      "top": 85,
+      "left": -210,
       "attrs": {
         "color": "red",
-        "label": "DETENER",
+        "label": "EMERGENCIA LOCAL",
         "bounce": "0"
       }
     },
@@ -251,72 +198,6 @@
       "esp:D34",
       "distancia:ECHO",
       "orange",
-      []
-    ],
-    [
-      "esp:3V3",
-      "velocidad:VCC",
-      "red",
-      []
-    ],
-    [
-      "esp:GND.1",
-      "velocidad:GND",
-      "black",
-      []
-    ],
-    [
-      "esp:D35",
-      "velocidad:SIG",
-      "purple",
-      []
-    ],
-    [
-      "avanzar:1.l",
-      "esp:D32",
-      "blue",
-      []
-    ],
-    [
-      "avanzar:2.l",
-      "esp:GND.1",
-      "black",
-      []
-    ],
-    [
-      "retroceder:1.l",
-      "esp:D33",
-      "blue",
-      []
-    ],
-    [
-      "retroceder:2.l",
-      "esp:GND.1",
-      "black",
-      []
-    ],
-    [
-      "izquierda:1.l",
-      "esp:D21",
-      "blue",
-      []
-    ],
-    [
-      "izquierda:2.l",
-      "esp:GND.1",
-      "black",
-      []
-    ],
-    [
-      "derecha:1.l",
-      "esp:D22",
-      "blue",
-      []
-    ],
-    [
-      "derecha:2.l",
-      "esp:GND.1",
-      "black",
       []
     ],
     [
