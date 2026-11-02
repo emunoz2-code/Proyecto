@@ -58,21 +58,40 @@ Cada LED se conecta `GPIO -> resistencia -> A`; su terminal C va a GND. Todos co
 | Archivo | Responsabilidad |
 |---|---|
 | `main.py` | Integra sensor, botón, MQTT y publicación periódica |
+| `cliente_mqtt.py` | Clase ClienteMQTT con conectar, publicar, suscribir y recibirmensaje |
 | `config.py` | Wi-Fi, broker, topics y tiempos |
 | `control.py` | Validación de órdenes, sesiones y reglas de parada |
 | `motores.py` | Dirección y PWM de las seis salidas |
 | `sensor.py` | Medición del HC-SR04 |
-| `wifi.py` | Conexión Wi-Fi con las salidas detenidas |
+| `red.py` | Función conectar(ssid, password), con plazo y atención a la parada local |
 | `mqtt_wire.py` | Cliente MQTT 3.1.1 incluido; no requiere instalar umqtt |
 | `clockutil.py` | Medición de intervalos, incluyendo desbordamiento del reloj |
 | `diagram.json` | Componentes y conexiones |
 | `CONTRATO_MQTT.md` | Topics, ejemplos JSON y comportamiento esperado de la futura app |
 | `README.md` | Montaje, ejecución y validación |
 
+## Relación con el ejemplo de clase
+
+Se aprovecha la organización del ejemplo proporcionado: `red.py` para Wi-Fi, `ClienteMQTT` para comunicación y `main.py` para el comportamiento del sistema. En el programa principal aparecen los mismos métodos `conectar()`, `publicar()`, `suscribir()` y `recibirmensaje()`.
+
+Se adapta el ejemplo de estas maneras:
+
+- `red.conectar()` devuelve el objeto Wi-Fi para detectar desconexiones y limita la espera. Mientras conecta, atiende el botón rojo con las salidas detenidas.
+- `suscribir()` registra la función antes de conectar. La conexión envía la suscripción al único topic de comandos `BASE/cmd`; `listo` indica su confirmación. Se vuelve a suscribir al reconectar.
+- La función receptora tiene tres argumentos: `(topico, mensaje, retenido)`. Los dos primeros son bytes, como en el ejemplo. El tercero permite rechazar órdenes antiguas entregadas como retenidas.
+- `publicar()` admite texto o bytes y una opción `retain`. Los comandos nunca se retienen.
+- `recibirmensaje()` atiende la comunicación dentro del bucle que también lee el sensor y comprueba los tiempos de parada.
+- Se añaden `cerrar()` y `listo` para tratar pérdidas de conexión.
+- No se usa el chat de `sys.stdin` ni el parpadeo `Led(2)`: la función receptora valida órdenes del vehículo, y el programa publica su estado.
+
+**Se reutiliza la estructura del ejemplo, no su importación directa de `umqtt.simple`.** Se conserva `mqtt_wire.py` como transporte interno. En la implementación oficial consultada, `check_msg()` pasa a lecturas bloqueantes al procesar un paquete; un paquete incompleto puede demorar el bucle de control. El transporte incluido conserva fragmentos y vuelve al bucle para seguir atendiendo las paradas. [Código oficial de umqtt.simple](https://raw.githubusercontent.com/micropython/micropython-lib/master/micropython/umqtt.simple/umqtt/simple.py).
+
+El broker se configura en `config.py`; no se cambió automáticamente al del ejemplo. La ESP32 y la futura app deben usar el mismo broker y topics, con identificadores de cliente diferentes. Los topics de chat `Prueba/chat` y `Prueba/chat2` se sustituyen por los definidos en `CONTRATO_MQTT.md`.
+
 ## Ejecutar en Wokwi
 
 1. Abrir un proyecto [ESP32 con MicroPython](https://wokwi.com/projects/new/micropython-esp32).
-2. Cargar los ocho archivos `.py` y `diagram.json` en la raíz del proyecto, reemplazando los archivos de la versión anterior. Los dos documentos Markdown son material de consulta.
+2. Cargar los nueve archivos `.py` y `diagram.json` en la raíz del proyecto, reemplazando los archivos de la versión anterior. `red.py` sustituye al anterior `wifi.py`. Los dos documentos Markdown son material de consulta.
 3. Revisar `config.py`: Wi-Fi `Wokwi-GUEST`, contraseña vacía; broker `test.mosquitto.org`, puerto 1883, sin credenciales.
 4. Mantener el mismo `TOPIC_BASE` en la ESP32 y el cliente MQTT. Cambiar su sufijo si se ejecutan copias independientes del proyecto.
 5. Iniciar la simulación y dejar el sensor en 100 cm. El monitor serie debe indicar la conexión y mostrar telemetría JSON. Los LED permanecen apagados hasta recibir órdenes válidas.
@@ -101,7 +120,7 @@ Los tiempos se comprueban en el bucle de ejecución y no constituyen garantías 
 
 | Solicitud | Implementación |
 |---|---|
-| MicroPython sobre ESP32 | Ocho módulos Python ejecutados desde `main.py` |
+| MicroPython sobre ESP32 | Nueve módulos Python ejecutados desde `main.py` |
 | Sensores | HC-SR04 y procesamiento de distancia |
 | Entradas y salidas | Botón rojo, ECHO, TRIG y salidas digitales/PWM |
 | Control de actuadores | Señales de dos motores representadas con LED |
@@ -128,7 +147,7 @@ La interfaz gráfica y su implementación pertenecen al Parcial 3. Aquí se deja
 
 ## Validación realizada
 
-Pruebas locales de lógica, adaptadores con periféricos dobles y transporte MQTT: **42 pruebas aprobadas**. Cubren las cuatro direcciones, PWM, sensor, mensajes inválidos y repetidos, plazos de parada, emergencias, reconexión lógica, fragmentación TCP y reloj con desbordamiento. También se comprobaron la sintaxis de los ocho módulos y la estructura de las conexiones del diagrama. No equivalen a ejecutar MicroPython dentro de Wokwi.
+Pruebas locales de lógica, adaptadores con periféricos dobles y transporte MQTT: **46 pruebas aprobadas**. Cubren las cuatro direcciones, PWM, sensor, mensajes inválidos y repetidos, plazos de parada, emergencias, reconexión lógica, fragmentación TCP y reloj con desbordamiento. Incluyen la integración de `ClienteMQTT` con comandos y publicación, y la función `red.conectar()` con conexión disponible o ausente. También se comprobaron la sintaxis de los nueve módulos y la estructura de las conexiones del diagrama. No equivalen a ejecutar MicroPython dentro de Wokwi.
 
 El 2 de noviembre de 2026 se intentó además una prueba contra `test.mosquitto.org:1883` desde el computador. La conexión TCP agotó el plazo antes de intercambiar mensajes; esa prueba **no se completó** y no demuestra un fallo del firmware ni confirma que el broker sea accesible desde Wokwi. La comunicación con un broker real sigue pendiente de verificación.
 

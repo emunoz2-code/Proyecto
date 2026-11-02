@@ -9,8 +9,8 @@ from clockutil import now_ms, elapsed
 from motores import Motores
 from sensor import SensorDistancia
 from control import Controller
-from mqtt_wire import MQTTClient
-from wifi import WiFi
+from cliente_mqtt import ClienteMQTT
+from red import conectar
 
 
 def token():
@@ -29,7 +29,6 @@ def main():
         sensor = SensorDistancia(trig=23, echo=34)
         boton_rojo = Pin(cfg.ESTOP_PIN, Pin.IN, Pin.PULL_UP)
         control = Controller(motores, cfg, token)
-        wifi = WiFi(cfg)
         base = cfg.TOPIC_BASE.rstrip("/")
         client_id = "esp32-" + token()
 
@@ -40,12 +39,13 @@ def main():
 
         def recibir(topic, payload, retained):
             control.physical(boton_rojo.value() == 0)
-            if topic == base + "/cmd":
+            if topic.decode() == base + "/cmd":
                 respuesta = control.command(payload, retained, now_ms())
-                mqtt.publish(base + "/ack", json.dumps(respuesta))
-                mqtt.publish(base + "/telemetry", json.dumps(control.snapshot(now_ms())))
+                mqtt.publicar(base + "/ack", json.dumps(respuesta))
+                mqtt.publicar(base + "/telemetry", json.dumps(control.snapshot(now_ms())))
 
-        mqtt = MQTTClient(cfg, recibir)
+        mqtt = ClienteMQTT(client_id, cfg.MQTT_HOST, base)
+        mqtt.suscribir(base + "/cmd", recibir)
         espera = 1000
         print("PARCIAL 2 - Control remoto MQTT")
         print("Broker:", cfg.MQTT_HOST, "| Topics:", base + "/#")
@@ -54,19 +54,20 @@ def main():
             control.link(False)
             try:
                 servicio_detenido()
-                wifi.connect(servicio_detenido)
-                mqtt.connect(client_id, base)
-                while not mqtt.ready:
+                wifi = conectar(cfg.WIFI_SSID, cfg.WIFI_PASSWORD,
+                                servicio_detenido, cfg.WIFI_TIMEOUT_MS)
+                mqtt.conectar()
+                while not mqtt.listo:
                     servicio_detenido()
-                    mqtt.poll()
+                    mqtt.recibirmensaje()
                     sleep_ms(cfg.LOOP_MS)
                 control.link(True)
-                mqtt.publish(base + "/availability", '{"v":1,"online":true}', True)
+                mqtt.publicar(base + "/availability", '{"v":1,"online":true}', True)
                 print("Conectado. Esperando arm y move desde el cliente MQTT.")
                 ultimo_sensor = ultima_telemetria = ultimo_latido = None
                 numero_latido = 0
                 conectado_desde = now_ms()
-                while wifi.connected():
+                while wifi.isconnected():
                     ahora = now_ms()
                     control.physical(boton_rojo.value() == 0)
                     # Caducar antes de renovar sensor o procesar mensajes tardios.
@@ -77,16 +78,16 @@ def main():
                         control.sensor(distancia, ultimo_sensor)
                     control.physical(boton_rojo.value() == 0)
                     control.tick(now_ms())
-                    mqtt.poll()  # Lectura y escritura no bloqueantes, acotadas.
+                    mqtt.recibirmensaje()  # No bloquea al recibir tramas incompletas.
                     ahora = now_ms()
                     control.tick(ahora)
                     if ultima_telemetria is None or elapsed(ahora, ultima_telemetria) >= cfg.TELEMETRY_MS:
                         estado = control.snapshot(ahora)
-                        mqtt.publish(base + "/telemetry", json.dumps(estado))
+                        mqtt.publicar(base + "/telemetry", json.dumps(estado))
                         print(json.dumps(estado))
                         ultima_telemetria = ahora
                     if ultimo_latido is None or elapsed(ahora, ultimo_latido) >= cfg.HEARTBEAT_MS:
-                        mqtt.publish(base + "/heartbeat", json.dumps({
+                        mqtt.publicar(base + "/heartbeat", json.dumps({
                             "v": 1, "seq": numero_latido, "uptime_ms": ahora}))
                         numero_latido += 1
                         ultimo_latido = ahora
@@ -96,7 +97,7 @@ def main():
                 raise OSError("Wi-Fi desconectado")
             except (OSError, ValueError) as exc:
                 control.link(False)
-                mqtt.close()
+                mqtt.cerrar()
                 print("Sin conexion:", exc, "| Reintento en ms:", espera)
                 inicio = now_ms()
                 while elapsed(now_ms(), inicio) < espera:
@@ -106,7 +107,7 @@ def main():
     finally:
         motores.detener()
         if mqtt:
-            mqtt.close()
+            mqtt.cerrar()
 
 
 if __name__ == "__main__":

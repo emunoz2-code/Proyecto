@@ -58,8 +58,9 @@ def take_packet(buf):
 
 
 class MQTTClient:
-    def __init__(self, cfg, callback):
+    def __init__(self, cfg, callback, broker=None):
         self.cfg, self.callback = cfg, callback
+        self.broker = broker if broker is not None else cfg.MQTT_HOST
         self.sock = None
         self.rx, self.tx = bytearray(), []
         self.partial_at = None
@@ -71,7 +72,7 @@ class MQTTClient:
     def connect(self, client_id, base):
         self.close()
         cfg = self.cfg
-        address = socket.getaddrinfo(cfg.MQTT_HOST, cfg.MQTT_PORT, socket.AF_INET, socket.SOCK_STREAM)[0][-1]
+        address = socket.getaddrinfo(self.broker, cfg.MQTT_PORT, socket.AF_INET, socket.SOCK_STREAM)[0][-1]
         self.sock = socket.socket()
         self.sock.settimeout(cfg.CONNECT_TIMEOUT_S)
         try:

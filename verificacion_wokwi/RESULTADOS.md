@@ -10,12 +10,13 @@ Comando desde la raíz del proyecto:
 .\.venv\Scripts\python.exe -m unittest discover -s verificacion_wokwi -v
 ```
 
-Resultado: 42 pruebas aprobadas en CPython. Se usan periféricos y sockets dobles, sin una ESP32 ni un broker real.
+Resultado actualizado: 46 pruebas aprobadas en CPython. Se usan periféricos y sockets dobles, sin una ESP32 ni un broker real.
 
 - `test_control.py`: 21 casos de comandos, sesiones, secuencias, emergencia, sensor, desconexión lógica y límites de tiempo.
 - `test_hardware_adapters.py`: 6 casos de señales de motor/PWM y conversión/fallos del sensor.
 - `test_mqtt.py`: 15 casos de tramas MQTT, conexión simulada, mensajes retenidos, fragmentación TCP y límites de colas/plazos.
-- Sintaxis: ocho módulos `.py` aceptados por el analizador de Python; no certifica todas las API del firmware MicroPython instalado en Wokwi.
+- `test_ejemplo_clase.py`: 4 casos del adaptador ClienteMQTT (suscripción, comando retenido, movimiento y publicación) y conexión Wi-Fi disponible, existente o con plazo agotado.
+- Sintaxis: nueve módulos `.py` aceptados por el analizador de Python; no certifica todas las API del firmware MicroPython instalado en Wokwi.
 - Diagrama: 15 componentes funcionales y dos textos, IDs únicos y conexiones referidas a partes existentes. Un solo botón, sin potenciómetro.
 
 ## Prueba externa incompleta
