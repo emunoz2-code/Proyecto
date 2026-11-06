@@ -1,8 +1,4 @@
-"""Version con pulsadores: reporta cambios sin repetir un estado constante.
-
-Reemplaza solo main.py del montaje original de cinco botones y potenciometro.
-Requiere los mismos motores.py y sensor.py de esa version; no usa MQTT.
-"""
+"""Control del vehiculo con pulsadores y sensor de distancia."""
 from machine import Pin, ADC
 from time import sleep_ms, ticks_ms, ticks_diff
 from motores import Motores

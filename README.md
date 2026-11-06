@@ -1,50 +1,53 @@
-# Vehículo con ESP32 y MicroPython — Parcial 2
+# Vehículo con ESP32 - Parcial 2
 
-Firmware para controlar las señales de un vehículo mediante cinco pulsadores, regular el PWM con un potenciómetro y detenerse cuando el sensor ultrasónico detecta un obstáculo. El montaje se realiza en **Wokwi** y utiliza seis LED para representar las señales de dos motores.
+Proyecto en MicroPython para controlar las señales de un carro desde cinco pulsadores. Se usa un sensor ultrasónico para detectar obstáculos y un potenciómetro para cambiar la potencia.
 
-**Entrega actual:** [código e instrucciones del montaje con pulsadores](correccion_pulsadores/README.md).
+[Ver simulación en Wokwi](https://wokwi.com/projects/479614304886635521)
 
-**Simulación:** [abrir el proyecto del estudiante en Wokwi](https://wokwi.com/projects/479614304886635521).
+## Componentes
 
-## Archivos para la sustentación
+- 1 ESP32.
+- 1 sensor HC-SR04.
+- 5 pulsadores: avanzar, retroceder, izquierda, derecha y detener.
+- 1 potenciómetro.
+- 6 LED y 6 resistencias de 220 ohmios.
 
-```text
-correccion_pulsadores/
-  main.py       Entradas, decisiones, control y monitor serie
-  motores.py    Clase Motores: dirección y PWM
-  sensor.py     Clase SensorDistancia: lectura del HC-SR04
-  diagram.json  Componentes y conexiones de Wokwi
-  README.md     Componentes, funcionamiento, ejecución y pruebas propuestas
-  LEEME.md      Explicación de la corrección del monitor serie
-```
+Los LED representan las señales de dirección y PWM de dos motores. En este montaje no hay motores reales ni se simula el desplazamiento del carro.
 
-Los cuatro archivos de ejecución deben estar juntos en la raíz del proyecto Wokwi. No se requieren instalaciones adicionales para ejecutar esta versión en el simulador.
+## Archivos
 
-## Componentes y funcionalidades
+- `main.py`: lee los botones y el potenciómetro, consulta la distancia y decide el movimiento.
+- `motores.py`: genera las señales de dirección y PWM.
+- `sensor.py`: obtiene la distancia del HC-SR04.
+- `diagram.json`: guarda los componentes y conexiones de Wokwi.
 
-Se usan una ESP32, un HC-SR04, cinco pulsadores, un potenciómetro, seis LED y seis resistencias de 220 Ω. El programa permite avanzar, retroceder, girar y detener; controla ambas señales PWM entre 0 y 100 %; se detiene a 20 cm o menos, con lectura inválida, potencia cero o varios botones pulsados; y muestra los cambios de distancia, estado y PWM sin repetir un estado constante.
+## Conexiones
 
-Los LED representan señales de control. El montaje no incluye un carro que se desplace, motores DC ni un L298N simulado. Las conexiones documentadas son para Wokwi.
-
-## Organización y evolución
-
-La carpeta `correccion_pulsadores/` es la entrega que corresponde al montaje explicado por el estudiante. `parcial2_wokwi/` conserva la variante MQTT, y `firmware/`, `simulation/`, `broker/` y las guías anteriores conservan la propuesta más amplia. Esos materiales se mantienen como antecedentes; no son necesarios para ejecutar el montaje con pulsadores ni constituyen el desarrollo de una aplicación de escritorio en esta entrega.
-
-El historial mantiene los commits originales: [ver explicación de las etapas](docs/HISTORIAL_GIT.md). No se alteraron sus fechas. Cada modificación futura debe guardarse con un mensaje que describa el cambio realmente realizado.
-
-## Requisitos del repositorio
-
-| Requisito del Parcial 2 | Dónde se encuentra |
+| Elemento | GPIO |
 |---|---|
-| Código fuente del firmware | Los tres archivos Python de `correccion_pulsadores/`. |
-| Organización en módulos | Programa principal, clase de motores y clase del sensor. |
-| README con descripción, componentes y funcionalidades | Este archivo y el README de la carpeta de entrega. |
-| Evolución mediante commits | Historial Git completo y `docs/HISTORIAL_GIT.md`. |
-| Enlace de Wokwi | Enlace de simulación al inicio de este README. |
-| Archivos adicionales para reproducir el proyecto | `diagram.json` e instrucciones de ejecución. |
+| Sensor TRIG / ECHO | 23 / 34 |
+| Avanzar / retroceder | 32 / 33 |
+| Izquierda / derecha / detener | 21 / 22 / 13 |
+| Potenciometro SIG | 35 |
+| Direccion IN1 / IN2 / IN3 / IN4 | 26 / 27 / 18 / 19 |
+| PWM ENA / ENB | 25 / 14 |
 
-## Validación
+Los botones conectan su GPIO a GND y usan la resistencia interna PULL_UP. El potenciómetro se conecta a 3V3 y GND. Cada LED lleva una resistencia en serie y su cátodo va a GND. El sensor usa VIN y GND. La conexión directa de ECHO corresponde solo a esta simulación, no a un montaje físico.
 
-Se comprueba localmente la sintaxis de los tres módulos y la correspondencia de los GPIO con el diagrama. La revisión con Python del computador no reemplaza la ejecución en MicroPython. El enlace de Wokwi fue proporcionado por el estudiante; su contenido actual no se ha comparado con los archivos locales. No se realizaron pruebas físicas. Las pruebas sugeridas para demostrar el funcionamiento están en el README de la entrega.
+## Funcionamiento
 
-Para guardar y subir los siguientes cambios, consultar [la guía breve de Git y GitHub](docs/GITHUB.md).
+El programa inicia detenido. Al pulsar una dirección, mantiene esa orden hasta recibir otra o detectar una condición de parada. El potenciómetro ajusta el PWM entre 0 y 100 %; ese porcentaje no es una velocidad medida.
+
+El carro se detiene si se pulsa el boton rojo, se presionan varios botones al tiempo, la potencia llega a cero, la distancia es de 20 cm o menos o el sensor no entrega una lectura válida. Después de una parada automática se debe volver a pulsar una dirección para continuar.
+
+El monitor serie muestra distancia, estado y PWM cuando cambian. Si todo permanece igual, no repite constantemente los mensajes.
+
+## Cómo ejecutarlo
+
+Abrir el enlace de Wokwi e iniciar la simulación. Para reproducir esta copia, crear un proyecto ESP32 con MicroPython y copiar juntos `main.py`, `motores.py`, `sensor.py` y `diagram.json` en el editor. El diagrama local puede tener una distribución visual diferente a la del enlace.
+
+Con el sensor en 100 cm, subir el potenciómetro y probar los botones de dirección. Luego cambiar la distancia a 10 cm para comprobar la parada. Al volver a 100 cm debe permanecer detenido hasta una nueva pulsación. Comprobar también el boton rojo y la potencia en cero.
+
+## Revisión
+
+Se revisaron la sintaxis de los archivos Python y las conexiones del diagrama en el computador. Esto no reemplaza la prueba en Wokwi. No se hicieron pruebas con componentes físicos ni se comprobó que la versión actual del enlace coincida exactamente con estos archivos.
