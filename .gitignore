@@ -13,3 +13,7 @@ dist/
 *.zip
 *.bin
 *.vcd
+
+# Archivos locales ajenos a la entrega
+/output/
+/tmp/

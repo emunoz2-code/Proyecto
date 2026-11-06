@@ -1,64 +1,50 @@
-# Vehículo móvil con ESP32, MicroPython y MQTT — Parcial 2
+# Vehículo con ESP32 y MicroPython — Parcial 2
 
-Proyecto de Programación II: carro de dos motores que recibe órdenes por MQTT y publica distancia, movimiento y estado de seguridad. El Parcial 2 se concentra en el **firmware**; el contrato de comunicación permite incorporar una aplicación de escritorio en el Parcial 3.
+Firmware para controlar las señales de un vehículo mediante cinco pulsadores, regular el PWM con un potenciómetro y detenerse cuando el sensor ultrasónico detecta un obstáculo. El montaje se realiza en **Wokwi** y utiliza seis LED para representar las señales de dos motores.
 
-**Guía completa:** [versión editable Markdown](GUIA_PARCIAL_2.md) · [versión HTML para lectura e impresión](GUIA_PARCIAL_2.html).
+**Entrega actual:** [código e instrucciones del montaje con pulsadores](correccion_pulsadores/README.md).
 
-**Placa de referencia:** ESP32 DevKit clásica / ESP32-WROOM-32, 4 MB de flash. El pinout no es intercambiable con ESP32-C3/S3. **Estado inicial:** motores deshabilitados; es necesario configurar la red y armar explícitamente el vehículo.
+**Simulación:** [abrir el proyecto del estudiante en Wokwi](https://wokwi.com/projects/479614304886635521).
 
-## Lectura y ejecución por etapas
-
-1. [Alcance, objetivos y arquitectura](docs/01_arquitectura.md).
-2. [Materiales, pinout y montaje eléctrico](docs/02_montaje.md). Leer antes de conectar energía.
-3. [Entorno Windows, PyCharm, carga y GitHub](docs/03_entorno.md).
-4. [Contrato MQTT y seguridad](docs/04_mqtt.md).
-5. [Pruebas y criterios de aceptación](docs/05_pruebas.md).
-6. [Correspondencia con los requisitos del Parcial 2](docs/06_rubrica.md).
-7. [Base de la aplicación del Parcial 3](docs/07_parcial3.md).
-8. [Fuentes técnicas](docs/FUENTES.md) y [registro de validación](evidence/VALIDACION.md).
-
-## Componentes
-
-ESP32, módulo L298N con disipador y diodos, dos motores DC y chasis, HC-SR04, fuente de motores adecuada, fuente regulada de 5 V para lógica, resistencias para divisor de ECHO y estados seguros, interruptor de emergencia de dos contactos normalmente cerrados, fusible y cableado. La selección de fuente, fusible y corriente se completa a partir de los motores reales; no se presupone que cualquier módulo L298N soporte 2 A continuos.
-
-## Estructura
+## Archivos para la sustentación
 
 ```text
-firmware/       MicroPython: control, sensores, motores, Wi-Fi y transporte MQTT
-tools/          cliente de consola, carga a placa y empaquetado Wokwi
-tests/          pruebas de seguridad y protocolo ejecutables en el computador
-broker/         configuración de Mosquitto para laboratorio
-simulation/     diagram.json, configuración de ejemplo y guía Wokwi
-docs/           explicación académica, montaje, instalación y Parcial 3
-diagrams/       esquemas SVG y fuente Mermaid editables
-evidence/       resultados verificables y plantilla de pruebas físicas
-.run/           configuración compartida de pruebas para PyCharm
+correccion_pulsadores/
+  main.py       Entradas, decisiones, control y monitor serie
+  motores.py    Clase Motores: dirección y PWM
+  sensor.py     Clase SensorDistancia: lectura del HC-SR04
+  diagram.json  Componentes y conexiones de Wokwi
+  README.md     Componentes, funcionamiento, ejecución y pruebas propuestas
+  LEEME.md      Explicación de la corrección del monitor serie
 ```
 
-## Comprobaciones en el computador
+Los cuatro archivos de ejecución deben estar juntos en la raíz del proyecto Wokwi. No se requieren instalaciones adicionales para ejecutar esta versión en el simulador.
 
-Desde la raíz, con Python 3.12 o superior:
+## Componentes y funcionalidades
 
-```powershell
-python -m unittest discover -s tests -v
-python tools/check_project.py
-```
+Se usan una ESP32, un HC-SR04, cinco pulsadores, un potenciómetro, seis LED y seis resistencias de 220 Ω. El programa permite avanzar, retroceder, girar y detener; controla ambas señales PWM entre 0 y 100 %; se detiene a 20 cm o menos, con lectura inválida, potencia cero o varios botones pulsados; y muestra los cambios de distancia, estado y PWM sin repetir un estado constante.
 
-Estas pruebas no requieren motores, broker ni dependencias externas. Compilar sintaxis con CPython no demuestra compatibilidad completa con MicroPython ni funcionamiento físico. Los resultados reales están en `evidence/VALIDACION.md`.
+Los LED representan señales de control. El montaje no incluye un carro que se desplace, motores DC ni un L298N simulado. Las conexiones documentadas son para Wokwi.
 
-## Puesta en marcha resumida
+## Organización y evolución
 
-1. Instalar las herramientas PC de `requirements-dev.txt` en `.venv`.
-2. Preparar el broker según `broker/README.md`.
-3. Copiar `firmware/config_local.example.py` como `firmware/config_local.py`; definir Wi-Fi, IP del broker, usuario, contraseña y un identificador único.
-4. Instalar MicroPython para la placa correcta y cargar con `tools/upload.ps1`.
-5. Con ruedas levantadas, verificar ECHO, parada física, estados y timeout antes de permitir desplazamientos.
-6. Ejecutar `tools/console.py` para observar telemetría y hacer movimientos de duración limitada.
+La carpeta `correccion_pulsadores/` es la entrega que corresponde al montaje explicado por el estudiante. `parcial2_wokwi/` conserva la variante MQTT, y `firmware/`, `simulation/`, `broker/` y las guías anteriores conservan la propuesta más amplia. Esos materiales se mantienen como antecedentes; no son necesarios para ejecutar el montaje con pulsadores ni constituyen el desarrollo de una aplicación de escritorio en esta entrega.
 
-No ejecutar `firmware/main.py` con Python de Windows: utiliza los periféricos de MicroPython. La batería no se mide en esta entrega; `battery_v` se publica como `null`.
+El historial mantiene los commits originales: [ver explicación de las etapas](docs/HISTORIAL_GIT.md). No se alteraron sus fechas. Cada modificación futura debe guardarse con un mensaje que describa el cambio realmente realizado.
 
-## Simulación y repositorio
+## Requisitos del repositorio
 
-Los archivos Wokwi se preparan mediante `python tools/build_wokwi.py`. Véase [simulation/README.md](simulation/README.md). El montaje simulado representa las órdenes a los motores con LED y analizador lógico; no reproduce un L298N ni la dinámica del carro. **Enlace de la simulación: pendiente de crear y guardar en Wokwi.** No se presenta un enlace ficticio como evidencia.
+| Requisito del Parcial 2 | Dónde se encuentra |
+|---|---|
+| Código fuente del firmware | Los tres archivos Python de `correccion_pulsadores/`. |
+| Organización en módulos | Programa principal, clase de motores y clase del sensor. |
+| README con descripción, componentes y funcionalidades | Este archivo y el README de la carpeta de entrega. |
+| Evolución mediante commits | Historial Git completo y `docs/HISTORIAL_GIT.md`. |
+| Enlace de Wokwi | Enlace de simulación al inicio de este README. |
+| Archivos adicionales para reproducir el proyecto | `diagram.json` e instrucciones de ejecución. |
 
-El historial local registra etapas reales de preparación de esta entrega, todas en la fecha de trabajo. No sustituye el desarrollo y las pruebas del estudiante a lo largo del curso. La publicación en GitHub requiere crear el repositorio en la cuenta elegida; las instrucciones están en la guía del entorno.
+## Validación
+
+Se comprueba localmente la sintaxis de los tres módulos y la correspondencia de los GPIO con el diagrama. La revisión con Python del computador no reemplaza la ejecución en MicroPython. El enlace de Wokwi fue proporcionado por el estudiante; su contenido actual no se ha comparado con los archivos locales. No se realizaron pruebas físicas. Las pruebas sugeridas para demostrar el funcionamiento están en el README de la entrega.
+
+Para guardar y subir los siguientes cambios, consultar [la guía breve de Git y GitHub](docs/GITHUB.md).
