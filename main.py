@@ -9,7 +9,6 @@ CAMBIO_DISTANCIA_CM = 1.0  # Evita mensajes por variaciones menores de medida.
 
 
 def decidir_estado(estado, orden, distancia):
-    """Una nueva pulsacion cambia la orden; un obstaculo siempre detiene."""
     if orden is not None:
         estado = orden
     if distancia is None or distancia <= DISTANCIA_MINIMA:
