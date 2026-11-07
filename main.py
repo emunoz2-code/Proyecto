@@ -1,4 +1,4 @@
-"""Control del vehiculo con pulsadores y sensor de distancia."""
+
 from machine import Pin, ADC
 from time import sleep_ms, ticks_ms, ticks_diff
 from motores import Motores
