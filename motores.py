@@ -1,4 +1,4 @@
-"""Señales de dos motores: en Wokwi se observan mediante seis LED."""
+
 from machine import Pin, PWM
 
 
