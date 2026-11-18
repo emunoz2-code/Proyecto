@@ -24,10 +24,8 @@ async def main(page: ft.Page):
     grafica, serie = crear_grafica()
     muestras = []
     tabla = crear_tabla()
-    ajuste = ft.TextField(label="Distancia simulada (2–400 cm)", value="100", width=230)
     selector = ft.Dropdown(label="Sensor", value="Disponible", width=180,
                            options=[ft.DropdownOption(key=t) for t in ("Disponible", "Sin lectura")])
-    ultima_distancia = 100
 
     def refrescar():
         auto.comprobar()
@@ -51,28 +49,22 @@ async def main(page: ft.Page):
         auto.pwm = round(e.control.value)
         refrescar()
 
-    def aplicar(e):
-        nonlocal ultima_distancia
-        try:
-            valor = float(ajuste.value.replace(",", "."))
-            if not 2 <= valor <= 400:
-                raise ValueError
-        except ValueError:
-            ajuste.error_text = "Ingresa un número entre 2 y 400."
-            page.update()
-            return
-        ajuste.error_text = None
-        ultima_distancia = valor
-        auto.distancia = valor
-        auto.registrar(f"Distancia ajustada a {valor:g} cm")
+    def cambiar_distancia(e):
+        auto.distancia = round(e.control.value)
         refrescar()
 
-    boton_aplicar = ft.Button("Aplicar distancia", on_click=aplicar)
+    def guardar_distancia(e):
+        auto.registrar(f"Distancia ajustada a {round(e.control.value)} cm")
+        refrescar()
+
+    ajuste = ft.Slider(min=2, max=400, divisions=398, value=auto.distancia,
+                       label="{value} cm", on_change=cambiar_distancia,
+                       on_change_end=guardar_distancia)
 
     def cambiar_sensor(e):
         disponible = selector.value == "Disponible"
-        auto.distancia = ultima_distancia if disponible else None
-        ajuste.disabled = boton_aplicar.disabled = not disponible
+        auto.distancia = round(ajuste.value) if disponible else None
+        ajuste.disabled = not disponible
         auto.registrar("Sensor · " + selector.value)
         refrescar()
 
@@ -104,15 +96,13 @@ async def main(page: ft.Page):
         ft.Row(botones, wrap=True, spacing=8),
         ft.Text("Potencia seleccionada (%)", color=TEXTO_SEC),
         ft.Slider(min=0, max=100, divisions=100, value=40, label="{value} %", on_change=cambiar_pwm),
-        ft.Row([ft.Icon(ft.Icons.SENSORS, size=18), aviso])], spacing=12))
+        ft.Text("Distancia simulada (cm)", color=TEXTO_SEC), ajuste,
+        ft.Row([selector, aviso], wrap=True)], spacing=12))
     tablero = pagina("Panel del vehículo", "ESP32  /  Simulación local", [
         indicadores, mando, panel("Distancia frontal · últimas 10 muestras (cm)", grafica)])
-    sensores = pagina("Sensor ultrasónico", "HC-SR04  /  Parada a 20 cm o menos", [
-        panel("Condiciones de la simulación", ft.Column([
-            selector, ft.Row([ajuste, boton_aplicar], wrap=True)], spacing=18))])
     registros = pagina("Historial", "Últimos 30 eventos de esta sesión", [
         panel("Registro de actividad", tabla)])
-    vistas = [tablero, sensores, registros]
+    vistas = [tablero, registros]
     area = ft.Container(content=tablero, expand=True, padding=16)
 
     def cambiar_vista(e):
@@ -125,7 +115,6 @@ async def main(page: ft.Page):
                                 height=90, fit=ft.BoxFit.CONTAIN)),
         destinations=[ft.NavigationRailDestination(icon=icono, label=texto)
                       for icono, texto in [(ft.Icons.DASHBOARD, "Panel"),
-                                           (ft.Icons.SENSORS, "Sensor"),
                                            (ft.Icons.TABLE_CHART, "Historial")]])
     page.add(ft.Row([ft.Container(content=menu, bgcolor=PANEL, border_radius=16,
                                   padding=8), area], expand=True, spacing=10,
