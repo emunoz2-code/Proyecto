@@ -1,6 +1,6 @@
 from datetime import datetime
 
-
+# Definir la clase y algunos atributos
 class Vehiculo:
     def __init__(self):
         self.estado = "Detenido"
