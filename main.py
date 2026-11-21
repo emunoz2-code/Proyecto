@@ -1,10 +1,12 @@
 #codigo del main
 import asyncio
 from pathlib import Path
+from time import monotonic
 import flet as ft
 from flet_charts import LineChartDataPoint
-from estilos import FONDO, PANEL, TEXTO_SEC, AZUL, AMARILLO, VERDE, ROJO
+from estilos import PANEL_2, FONDO, PANEL, TEXTO_SEC, AZUL, AMARILLO, VERDE, ROJO
 from paneles import crear_grafica, crear_tabla
+from incendio import Incendio
 from vehiculo import Vehiculo
 
 ASSETS = Path(__file__).parent / "assets"
@@ -30,21 +32,16 @@ async def main(page: ft.Page):
 
     def refrescar():
         auto.comprobar()
+        actualizar_rescate()
         aplicada = auto.pwm if auto.estado != "Detenido" else 0
         estado.value = auto.estado
-        distancia.value = "Sin lectura" if auto.distancia is None else f"{auto.distancia:g} cm"
+        distancia.value = "Sin lectura" if auto.distancia is None else f"{auto.distancia:.1f} cm"
         potencia.value = f"{aplicada} %"
         aviso.value = auto.bloqueo() or "Camino despejado"
         aviso.color = AMARILLO if auto.bloqueo() else VERDE
         tabla.rows = [ft.DataRow(cells=[ft.DataCell(ft.Text(h)), ft.DataCell(ft.Text(m))])
                       for h, m in auto.eventos]
         page.update()
-
-    def ordenar(nombre):
-        def pulsar(e):
-            auto.mover(nombre)
-            refrescar()
-        return pulsar
 
     def cambiar_pwm(e):
         auto.pwm = round(e.control.value)
@@ -90,23 +87,118 @@ async def main(page: ft.Page):
         indicador("Movimiento", estado, ft.Icons.DIRECTIONS_CAR, AZUL),
         indicador("Distancia frontal", distancia, ft.Icons.SENSORS, VERDE),
         indicador("PWM aplicado", potencia, ft.Icons.SPEED, AMARILLO)], spacing=12)
-    botones = [ft.Button(nombre, on_click=ordenar(nombre)) for nombre in
-               ("Avanzar", "Retroceder", "Izquierda", "Derecha")]
-    botones.append(ft.Button("Detener", bgcolor=ROJO, on_click=ordenar("Detenido")))
-    mando = panel("Control de movimiento", ft.Column([
-        ft.Row(botones, wrap=True, spacing=8),
-        ft.Text("Potencia seleccionada (%)", color=TEXTO_SEC),
+    def fila(*controles):
+        return ft.Row(list(controles), alignment=ft.MainAxisAlignment.CENTER, spacing=8)
+
+    palanca = ft.Container(width=50, height=50, left=65, top=65,
+                           border_radius=25, bgcolor=AZUL)
+    ultima_orden = "Detenido"
+
+    def orientar(x, y):
+        nonlocal ultima_orden
+        radio = (x*x + y*y)**0.5
+        escala = min(1, 58 / max(1, radio))
+        orden = "Detenido"
+        if radio >= 18:
+            if min(abs(x), abs(y)) >= 0.4142 * max(abs(x), abs(y)):
+                orden = ("Retroceder" if y > 0 else "Avanzar") + (" derecha" if x > 0 else " izquierda")
+            elif abs(x) > abs(y):
+                orden = "Derecha" if x > 0 else "Izquierda"
+            else:
+                orden = "Retroceder" if y > 0 else "Avanzar"
+        else:
+            x = y = 0
+        palanca.left, palanca.top = 65 + x*escala, 65 + y*escala
+        if orden != ultima_orden:
+            auto.mover(orden)
+            ultima_orden = orden
+        refrescar()
+
+    def arrastrar(e):
+        orientar(e.local_position.x - 90, e.local_position.y - 90)
+
+    def soltar(e):
+        orientar(0, 0)
+
+    base = ft.Stack([
+        ft.Container(width=180, height=180, border_radius=90, bgcolor=FONDO),
+        *[ft.Text(t, left=x, top=y, color=TEXTO_SEC) for t,x,y in
+          [("▲",84,6), ("▼",84,153), ("◀",8,79), ("▶",155,79)]],
+        palanca], width=180, height=180)
+    joystick = ft.GestureDetector(content=base, on_pan_start=arrastrar,
+        on_pan_update=arrastrar, on_pan_end=soltar, on_pan_cancel=soltar, drag_interval=30)
+    anillo = ft.ProgressRing(value=0, width=72, height=72, stroke_width=8, color=AZUL)
+    porcentaje = ft.Text()
+    mando = panel("Joystick", ft.Column([fila(joystick),
+        ft.Text("Arrastra para conducir. Suelta para detener.", color=TEXTO_SEC), fila(anillo, porcentaje)]))
+    ajustes = panel("Ajustes de conducción", ft.Column([
+        ft.Text("Potencia seleccionada (%)"),
         ft.Slider(min=0, max=100, divisions=100, value=40, label="{value} %", on_change=cambiar_pwm),
-        ft.Text("Distancia simulada (cm)", color=TEXTO_SEC), ajuste,
-        ft.Row([selector, aviso], wrap=True)], spacing=12))
-    tablero = pagina("Panel del vehículo", "ESP32  /  Simulación local", [
-        indicadores, mando, panel("Distancia frontal · últimas 10 muestras (cm)", grafica)])
+        ft.Text("Distancia frontal simulada (cm)"), ajuste, grafica, selector, aviso], spacing=10))
+    mando.col = ajustes.col = {"xs":12, "sm":6}
+    tablero = pagina("Conducción", "Vehículo ESP32  /  Simulación local", [
+        indicadores, ft.ResponsiveRow([mando, ajustes], spacing=14, run_spacing=14)])
     registros = pagina("Historial", "Últimos 30 eventos de esta sesión", [
         panel("Registro de actividad", tabla)])
-    vistas = [tablero, registros]
+    fuego = Incendio()
+    lectura = ft.Text(size=18)
+    alcance = ft.Text()
+    bomba = ft.Button("Encender bomba")
+    termica, curva = crear_grafica(100, 25, AMARILLO)
+    temperaturas = []
+
+    def actualizar_rescate():
+        fuego.evaluar()
+        alcance.value = f"Distancia al foco: {fuego.distancia} cm · alcance: {fuego.alcance} cm"
+        alarma = "Fuego detectado" if fuego.detectado else ("Foco fuera de alcance" if fuego.fuego else "Sin fuego")
+        lectura.value = alarma + (" · Bomba encendida" if fuego.bomba else " · Bomba apagada")
+        bomba.content = "Apagar bomba" if fuego.bomba else "Encender bomba"
+        bomba.disabled = fuego.automatico
+        valor = auto.pwm if auto.estado != "Detenido" else 0
+        anillo.value = valor / 100
+        porcentaje.value = f"PWM de los motores: {valor} %"
+
+    def medir_temperatura():
+        temperaturas.append(fuego.temperatura)
+        del temperaturas[:-10]
+        curva.points = [LineChartDataPoint(i, t) for i, t in enumerate(temperaturas)]
+
+    def iniciar(e):
+        fuego.fuego = True
+        fuego.temperatura = 85
+        medir_temperatura()
+        auto.registrar("Inicio de fuego simulado")
+        refrescar()
+
+    def mover_foco(e):
+        fuego.distancia = round(e.control.value)
+        refrescar()
+
+    def modo(e):
+        fuego.automatico = e.control.value
+        fuego.bomba = False
+        auto.registrar("Bomba en modo " + ("automático" if fuego.automatico else "manual"))
+        refrescar()
+
+    def bombear(e):
+        if not fuego.automatico:
+            fuego.bomba = not fuego.bomba
+            auto.registrar("Bomba manual " + ("encendida" if fuego.bomba else "apagada"))
+            refrescar()
+
+    bomba.on_click = bombear
+    escenario = panel("Escenario", ft.Column([ft.Button("Simular fuego", on_click=iniciar), alcance,
+        ft.Slider(min=2, max=200, divisions=198, value=50, label="{value} cm", on_change=mover_foco),
+        ft.Switch(label="Bomba automática", value=True, on_change=modo), bomba, lectura]))
+    termometro = panel("Temperatura del foco (°C)", termica)
+    escenario.col = termometro.col = {"xs":12, "sm":6}
+    rescate = pagina("Unidad de bomberos", "Prueba local de detección y extinción", [
+        ft.ResponsiveRow([escenario, termometro], spacing=14, run_spacing=14)])
+    vistas = [tablero, rescate, registros]
     area = ft.Container(content=tablero, expand=True, padding=16)
 
     def cambiar_vista(e):
+        soltar(e)
         area.content = vistas[e.control.selected_index]
         page.update()
 
@@ -116,21 +208,36 @@ async def main(page: ft.Page):
                                 height=90, fit=ft.BoxFit.CONTAIN)),
         destinations=[ft.NavigationRailDestination(icon=icono, label=texto)
                       for icono, texto in [(ft.Icons.DASHBOARD, "Panel"),
+                                           (ft.Icons.LOCAL_FIRE_DEPARTMENT, "Bomberos"),
                                            (ft.Icons.TABLE_CHART, "Historial")]])
     page.add(ft.Row([ft.Container(content=menu, bgcolor=PANEL, border_radius=16,
                                   padding=8), area], expand=True, spacing=10,
                     vertical_alignment=ft.CrossAxisAlignment.STRETCH))
     refrescar()
+    anterior = siguiente = monotonic()
     while page.session:
+        ahora = monotonic()
+        auto.simular(min(ahora - anterior, 0.1))
+        anterior = ahora
+        if auto.distancia is not None:
+            ajuste.value = round(auto.distancia)
+        if ahora < siguiente:
+            if auto.estado != "Detenido" or estado.value != auto.estado:
+                refrescar()
+            await asyncio.sleep(0.1)
+            continue
+        siguiente = ahora + 1
         if auto.distancia is None:
             muestras.clear()
         else:
             muestras.append(auto.distancia)
             muestras = muestras[-10:]
         serie.points = [LineChartDataPoint(i, d) for i, d in enumerate(muestras)]
-        if area.content is tablero:
-            grafica.update()
-        await asyncio.sleep(1)
+        if fuego.paso():
+            auto.registrar("Fuego extinguido · bomba apagada")
+        medir_temperatura()
+        refrescar()
+        await asyncio.sleep(0.1)
 
 
 if __name__ == "__main__":
