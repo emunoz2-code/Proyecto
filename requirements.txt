@@ -1,2 +1,0 @@
-flet[desktop]==1.1.2
-flet-charts==1.1.2
